@@ -1277,7 +1277,7 @@ class RedisStateManager:
     async def _monitor_heartbeats(self):
         """心跳监控任务 - 增强版，支持更可靠的超时检测和彻底清理"""
         logger.info("Redis heartbeat monitor started")
-        heartbeat_timeout = 30  # 心跳超时时间（秒）
+        heartbeat_timeout = 120  # 心跳超时时间（秒）
 
         while True:
             try:
