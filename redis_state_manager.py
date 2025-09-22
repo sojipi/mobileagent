@@ -26,6 +26,10 @@ from agentbricks.components.sandbox_center.sandboxes.cloud_computer_wy import (
 )
 from fastapi import HTTPException
 from agentbricks.utils.logger_util import logger
+from agentbricks.components.sandbox_center.sandboxes.cloud_computer_wy import (
+    AppStreamClient,
+)
+
 
 class EnvironmentOperationStatus(Enum):
     """环境操作状态"""
