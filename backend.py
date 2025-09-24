@@ -287,8 +287,14 @@ state_manager = None
 # 机器标识
 MACHINE_ID = os.getenv("MACHINE_ID", socket.gethostname())
 
+
 # Redis发布订阅控制信号
-async def publish_control_signal(user_id: str, chat_id: str, action: str, **kwargs):
+async def publish_control_signal(
+    user_id: str,
+    chat_id: str,
+    action: str,
+    **kwargs,
+):
     """发布控制信号到Redis"""
     if not state_manager:
         return False
@@ -299,18 +305,19 @@ async def publish_control_signal(user_id: str, chat_id: str, action: str, **kwar
             "action": action,
             "timestamp": time.time(),
             "machine_id": MACHINE_ID,
-            **kwargs
+            **kwargs,
         }
 
         await state_manager.redis_client.publish(
             channel,
-            json.dumps(signal_data)
+            json.dumps(signal_data),
         )
         logger.info(f"发布控制信号: {action} to {channel}")
         return True
     except Exception as e:
         logger.error(f"发布控制信号失败: {e}")
         return False
+
 
 async def listen_for_control_signals(user_id: str, chat_id: str, agent):
     """监听Redis控制信号的后台任务"""
@@ -325,25 +332,26 @@ async def listen_for_control_signals(user_id: str, chat_id: str, agent):
         logger.info(f"开始监听控制信号: {channel}")
 
         async for message in pubsub.listen():
-            if message['type'] == 'message':
+            if message["type"] == "message":
                 try:
-                    signal_data = json.loads(message['data'])
-                    action = signal_data.get('action')
+                    signal_data = json.loads(message["data"])
+                    action = signal_data.get("action")
 
                     logger.info(f"收到控制信号: {action} from {channel}")
 
-                    if action == 'stop':
+                    if action == "stop":
                         # 设置停止标志
-                        if hasattr(agent, 'should_stop'):
+                        if hasattr(agent, "should_stop"):
                             agent.should_stop = True
                         # 更新Redis状态
                         await state_manager.update_chat_state(
-                            user_id, chat_id,
-                            {"is_running": False, "stop_requested": True}
+                            user_id,
+                            chat_id,
+                            {"is_running": False, "stop_requested": True},
                         )
-                    elif action == 'interrupt_wait':
+                    elif action == "interrupt_wait":
                         # 调用中断等待方法
-                        if hasattr(agent, 'interrupt_wait'):
+                        if hasattr(agent, "interrupt_wait"):
                             agent.interrupt_wait()
 
                 except Exception as e:
@@ -358,14 +366,22 @@ async def listen_for_control_signals(user_id: str, chat_id: str, agent):
         except Exception as e:
             logger.error(f"关闭pub/sub连接失败: {e}")
 
+
 async def check_stop_signal_from_redis(user_id: str, chat_id: str) -> bool:
     """检查Redis中的停止信号"""
     try:
         chat_state = await state_manager.get_chat_state(user_id, chat_id)
         if isinstance(chat_state, dict):
-            return not chat_state.get("is_running", True) or chat_state.get("stop_requested", False)
+            return not chat_state.get("is_running", True) or chat_state.get(
+                "stop_requested",
+                False,
+            )
         else:
-            return not getattr(chat_state, "is_running", True) or getattr(chat_state, "stop_requested", False)
+            return not getattr(chat_state, "is_running", True) or getattr(
+                chat_state,
+                "stop_requested",
+                False,
+            )
     except Exception as e:
         logger.error(f"检查停止信号失败: {e}")
         return False
@@ -373,7 +389,11 @@ async def check_stop_signal_from_redis(user_id: str, chat_id: str) -> bool:
 
 # Redis操作超时保护函数
 async def safe_redis_operation(
-    operation_func, *args, timeout=10.0, max_retries=3, **kwargs
+    operation_func,
+    *args,
+    timeout=10.0,
+    max_retries=3,
+    **kwargs,
 ):
     """
     安全的Redis操作，带重试和超时保护
@@ -398,11 +418,11 @@ async def safe_redis_operation(
             if attempt < max_retries - 1:
                 await asyncio.sleep(1.0 * (attempt + 1))  # 递增延迟
             else:
-                logger.error(f"Redis操作最终超时失败")
+                logger.error("Redis操作最终超时失败")
                 return None
         except Exception as e:
             logger.warning(
-                f"Redis操作失败，尝试 {attempt + 1}/{max_retries}: {e}"
+                f"Redis操作失败，尝试 {attempt + 1}/{max_retries}: {e}",
             )
             if attempt < max_retries - 1:
                 await asyncio.sleep(1.0 * (attempt + 1))
@@ -488,7 +508,7 @@ async def startup_event():
     logger.info("Synchronizing instance IDs with environment variables")
     await state_manager.sync_instance_ids(
         phone_instance_ids=PHONE_INSTANCE_IDS,
-        desktop_ids=DESKTOP_IDS
+        desktop_ids=DESKTOP_IDS,
     )
 
     # 启动心跳监控任务
@@ -499,17 +519,22 @@ async def startup_event():
         await state_manager.redis_client.hset(
             "machine_registry",
             MACHINE_ID,
-            json.dumps({
-                "machine_id": MACHINE_ID,
-                "startup_time": time.time(),
-                "pid": os.getpid()
-            })
+            json.dumps(
+                {
+                    "machine_id": MACHINE_ID,
+                    "startup_time": time.time(),
+                    "pid": os.getpid(),
+                },
+            ),
         )
         logger.info(f"机器 {MACHINE_ID} 已注册到Redis")
     except Exception as e:
         logger.error(f"注册机器信息失败: {e}")
 
-    logger.info(f"Backend startup completed with Redis state manager on machine {MACHINE_ID}")
+    logger.info(
+        "Backend startup completed with Redis "
+        f"state manager on machine {MACHINE_ID}",
+    )
 
 
 # 请求/响应模型
@@ -532,7 +557,7 @@ class AgentConfig(BaseModel):
     save_logs: bool = True
     timeout: int = 120
     pc_use_addon_info: str = ""
-    max_steps: int = 15
+    max_steps: int = 20
     user_id: str = ""
     chat_id: str = ""
     e2e_info: list = []
@@ -1158,398 +1183,434 @@ async def _handle_resume_stream(
     )
 
 
-async def _handle_new_stream(
-    user_id: str,
-    chat_id: str,
-    request: ComputerUseRequest,
-):
-    """处理新的流式任务 - 改进版"""
-    logger.info(f"开始新任务，用户: {user_id}, 对话: {chat_id}")
-
-    # 使用改进的流式生成器
-    stream_generator = create_improved_agent_stream(
-        state_manager,
-        user_id,
-        chat_id,
-        request,
-    )
-
-    # 返回带错误处理的流式响应
-    return create_stream_response_with_error_handling(stream_generator)
-
-
 # async def _handle_new_stream(
 #     user_id: str,
 #     chat_id: str,
 #     request: ComputerUseRequest,
 # ):
-#     """处理新的流式任务"""
+#     """处理新的流式任务 - 改进版"""
 #     logger.info(f"开始新任务，用户: {user_id}, 对话: {chat_id}")
 #
-#     async def agent_stream():
-#         """Agent流式响应生成器 - 支持序列号存储"""
-#         task_id = None
-#         try:
-#
-#             # 创建AgentScope Context模拟对象
-#             class MockContext:
-#                 def __init__(self, request):
-#                     self.request = request
-#
-#             context = MockContext(request)
-#
-#             # 清空旧的流式数据
-#             await state_manager.clear_stream_data(user_id, chat_id)
-#
-#             # 设置任务状态
-#             await state_manager.update_chat_state(
-#                 user_id,
-#                 chat_id,
-#                 {
-#                     "is_running": True,
-#                     "current_task": f"Agent API Task from input:"
-#                     f" {len(request.input)} messages",
-#                 },
-#             )
-#
-#             # 重新获取更新后的state
-#             chat_state = await state_manager.get_chat_state(user_id, chat_id)
-#             task_id = chat_state.get("task_id")
-#
-#             # 创建Agent配置
-#             agent_config = {
-#                 "equipment": chat_state.get("equipment"),
-#                 "output_dir": ".",
-#                 "sandbox_type": chat_state.get("sandbox_type"),
-#                 "status_callback": None,
-#                 "mode": (
-#                     "phone_use"
-#                     if chat_state.get("sandbox_type") == "phone_wuyin"
-#                     else "pc_use"
-#                 ),
-#                 "pc_use_add_info": request.config.pc_use_addon_info,
-#                 "max_steps": request.config.max_steps,
-#                 "chat_id": chat_id,
-#                 "user_id": user_id,
-#                 "e2e_info": request.config.e2e_info,
-#                 "extra_params": request.config.extra_params,
-#                 "state_manager": state_manager,
-#             }
-#
-#             # 创建Agent实例
-#             agent = ComputerUseAgent(
-#                 name="ComputerUseAgent",
-#                 agent_config=agent_config,
-#             )
-#
-#             # 将agent引用存储在应用状态中，支持多实例部署
-#             app.state.running_agents[f"{user_id}:{chat_id}"] = agent
-#
-#             # 将agent标识存储到Redis（仅用于状态检查，不是真实对象）
-#             await state_manager.update_chat_state(
-#                 user_id,
-#                 chat_id,
-#                 {
-#                     "agent_running": True,
-#                     "agent_id": id(agent),  # 存储agent的标识符
-#                 },
-#             )
-#
-#             logger.info(f"开始Agent执行，用户: {user_id}, 对话: {chat_id}")
-#             # 执行Agent任务并处理流式输出
-#             async_iterator = None
-#
-#             # 心跳机制变量
-#             last_heartbeat = time.time()
-#             heartbeat_interval = 30  # 30秒心跳间隔
-#
-#             try:
-#                 async_iterator = agent.run_async(context)
-#                 async for result in async_iterator:
-#                     # 检查是否需要发送心跳
-#                     current_time = time.time()
-#                     if current_time - last_heartbeat >= heartbeat_interval:
-#                         heartbeat_data = {
-#                             "object": "heartbeat",
-#                             "type": "heartbeat",
-#                             "timestamp": current_time,
-#                             "status": "alive",
-#                             "user_id": user_id,
-#                             "chat_id": chat_id
-#                         }
-#
-#                         # 尝试存储心跳到Redis（失败也不影响发送）
-#                         try:
-#                             heartbeat_sequence = await safe_redis_operation(
-#                                 state_manager.store_stream_data,
-#                                 user_id, chat_id, heartbeat_data, task_id,
-#                                 timeout=5.0, max_retries=1
-#                             )
-#                             heartbeat_data["sequence_number"] = heartbeat_sequence
-#                         except Exception as heartbeat_redis_error:
-#                             logger.warning(f"心跳存储到Redis失败: {heartbeat_redis_error}")
-#                             heartbeat_data["sequence_number"] = None
-#
-#                         # 发送心跳
-#                         heartbeat_json = json.dumps(heartbeat_data, ensure_ascii=False)
-#                         yield f"data: {heartbeat_json}\n\n"
-#                         last_heartbeat = current_time
-#
-#                     try:
-#                         # 将Agent的输出转换为JSON格式
-#                         if hasattr(result, "model_dump"):
-#                             result_dict = result.model_dump()
-#                         else:
-#                             result_dict = _serialize(result)
-#
-#                         # 直接使用Agent返回的原始数据，只添加序列号
-#                         sequence_number = await safe_redis_operation(
-#                             state_manager.store_stream_data,
-#                             user_id, chat_id, result_dict, task_id,
-#                             timeout=10.0, max_retries=2
-#                         )
-#
-#                         if sequence_number is not None:
-#                             result_dict["sequence_number"] = sequence_number
-#                         else:
-#                             # Redis存储失败，但仍然发送数据
-#                             result_dict["sequence_number"] = None
-#                             result_dict["storage_warning"] = "数据未能存储到Redis"
-#
-#                         json_str = json.dumps(result_dict, ensure_ascii=False)
-#                         yield f"data: {json_str}\n\n"
-#
-#                     except Exception as serialize_error:
-#                         logger.error(f"处理输出时出错: {serialize_error}")
-#                         # 存储错误信息
-#                         error_data = {
-#                             "error": f"序列化输出时出错: {str(serialize_error)}",
-#                             "type": "serialization_error",
-#                         }
-#
-#                         sequence_number = await safe_redis_operation(
-#                             state_manager.store_stream_data,
-#                             user_id, chat_id, error_data, task_id,
-#                             timeout=5.0, max_retries=1
-#                         )
-#
-#                         # 获取Redis中已标准化的错误数据（如果存储成功）
-#                         if sequence_number is not None:
-#                             stored_error_list = (
-#                                 await state_manager.get_stream_data_from_sequence(
-#                                     user_id,
-#                                     chat_id,
-#                                     sequence_number,
-#                                     task_id,
-#                                 )
-#                             )
-#
-#                             if stored_error_list:
-#                                 _d = json.dumps(
-#                                     stored_error_list[0],
-#                                     ensure_ascii=False,
-#                                 )
-#                                 yield f"data: {_d}\n\n"
-#                             else:
-#                                 # 降级方案
-#                                 error_output = {
-#                                     "sequence_number": sequence_number,
-#                                     "object": "error",
-#                                     "status": "error",
-#                                     "error": str(serialize_error),
-#                                     "type": "error",
-#                                     "data": error_data,
-#                                 }
-#                                 _data = json.dumps(
-#                                     error_output,
-#                                     ensure_ascii=False,
-#                                 )
-#                                 yield f"data: {_data}\n\n"
-#                         else:
-#                             # Redis存储失败，直接发送错误信息
-#                             error_output = {
-#                                 "sequence_number": None,
-#                                 "object": "error",
-#                                 "status": "error",
-#                                 "error": str(serialize_error),
-#                                 "type": "error",
-#                                 "data": error_data,
-#                                 "storage_warning": "错误信息未能存储到Redis"
-#                             }
-#                             _data = json.dumps(error_output, ensure_ascii=False)
-#                             yield f"data: {_data}\n\n"
-#                         continue
-#
-#             except Exception as iteration_error:
-#                 logger.error(f"Agent执行时出错: {iteration_error}")
-#                 # 存储执行错误
-#                 error_data = {
-#                     "error": f"Agent执行时出错: {str(iteration_error)}",
-#                     "type": "iteration_error",
-#                 }
-#
-#                 sequence_number = await safe_redis_operation(
-#                     state_manager.store_stream_data,
-#                     user_id, chat_id, error_data, task_id,
-#                     timeout=5.0, max_retries=1
-#                 )
-#
-#                 # 获取Redis中已标准化的错误数据（如果存储成功）
-#                 if sequence_number is not None:
-#                     stored_error_list = (
-#                         await state_manager.get_stream_data_from_sequence(
-#                             user_id,
-#                             chat_id,
-#                             sequence_number,
-#                             task_id,
-#                         )
-#                     )
-#
-#                     if stored_error_list:
-#                         _d = json.dumps(stored_error_list[0], ensure_ascii=False)
-#                         yield f"data: {_d}\n\n"
-#                     else:
-#                         # 降级方案
-#                         error_output = {
-#                             "sequence_number": sequence_number,
-#                             "object": "error",
-#                             "status": "error",
-#                             "error": str(iteration_error),
-#                             "type": "error",
-#                             "data": error_data,
-#                         }
-#                         _d = json.dumps(error_output, ensure_ascii=False)
-#                         yield f"data: {_d}\n\n"
-#                 else:
-#                     # Redis存储失败，直接发送错误信息
-#                     error_output = {
-#                         "sequence_number": None,
-#                         "object": "error",
-#                         "status": "error",
-#                         "error": str(iteration_error),
-#                         "type": "error",
-#                         "data": error_data,
-#                         "storage_warning": "执行错误信息未能存储到Redis"
-#                     }
-#                     _d = json.dumps(error_output, ensure_ascii=False)
-#                     yield f"data: {_d}\n\n"
-#
-#             finally:
-#                 # 清理资源
-#                 if async_iterator and hasattr(async_iterator, "aclose"):
-#                     try:
-#                         await async_iterator.aclose()
-#                     except Exception as close_error:
-#                         print(f"关闭异步迭代器时出错: {close_error}")
-#
-#             print(f"Agent执行完成，用户: {user_id}, 对话: {chat_id}")
-#
-#         except Exception as e:
-#             logger.error(
-#                 f"Agent stream execution failed for user {user_id}, "
-#                 f"chat {chat_id}: {e}",
-#             )
-#             # 存储全局错误
-#             error_data = {
-#                 "error": f"任务执行失败: {str(e)}",
-#                 "type": "agent_error",
-#             }
-#
-#             try:
-#                 sequence_number = await safe_redis_operation(
-#                     state_manager.store_stream_data,
-#                     user_id, chat_id, error_data, task_id,
-#                     timeout=5.0, max_retries=1
-#                 )
-#
-#                 # 获取Redis中已标准化的错误数据（如果存储成功）
-#                 if sequence_number is not None:
-#                     stored_error_list = (
-#                         await state_manager.get_stream_data_from_sequence(
-#                             user_id,
-#                             chat_id,
-#                             sequence_number,
-#                             task_id,
-#                         )
-#                     )
-#
-#                     if stored_error_list:
-#                         _d = json.dumps(stored_error_list[0], ensure_ascii=False)
-#                         yield f"data: {_d}\n\n"
-#                     else:
-#                         # 降级方案
-#                         error_output = {
-#                             "sequence_number": sequence_number,
-#                             "object": "error",
-#                             "status": "error",
-#                             "error": str(e),
-#                             "type": "error",
-#                             "data": error_data,
-#                         }
-#                         _d = json.dumps(error_output, ensure_ascii=False)
-#                         yield f"data: {_d}\n\n"
-#                 else:
-#                     # Redis存储失败，直接发送错误信息
-#                     error_output = {
-#                         "sequence_number": None,
-#                         "object": "error",
-#                         "status": "error",
-#                         "error": str(e),
-#                         "type": "error",
-#                         "data": error_data,
-#                         "storage_warning": "全局错误信息未能存储到Redis"
-#                     }
-#                     _d = json.dumps(error_output, ensure_ascii=False)
-#                     yield f"data: {_d}\n\n"
-#             except Exception as storage_error:
-#                 print(f"存储错误信息失败: {storage_error}")
-#                 # 最后的错误输出，不存储到Redis
-#                 final_error = {
-#                     "sequence_number": None,
-#                     "object": "error",
-#                     "status": "error",
-#                     "error": str(e),
-#                     "type": "error",
-#                     "data": {"error": str(e)},
-#                 }
-#                 _d = json.dumps(final_error, ensure_ascii=False)
-#                 yield f"data: {_d}\n\n"
-#
-#         finally:
-#             # 清理状态
-#             try:
-#                 # 清理agent引用
-#                 composite_key = f"{user_id}:{chat_id}"
-#                 if composite_key in app.state.running_agents:
-#                     del app.state.running_agents[composite_key]
-#
-#                 await state_manager.update_chat_state(
-#                     user_id,
-#                     chat_id,
-#                     {
-#                         "is_running": False,
-#                         "current_task": None,
-#                         "agent_running": False,
-#                         "agent_id": None,
-#                     },
-#                 )
-#             except Exception as cleanup_error:
-#                 print(f"清理状态时出错: {cleanup_error}")
-#
-#     return StreamingResponse(
-#         agent_stream(),
-#         media_type="text/event-stream",
-#         headers={
-#             "Cache-Control": "no-cache, no-store, must-revalidate",
-#             "Connection": "keep-alive",
-#             "Access-Control-Allow-Origin": "*",
-#             "Access-Control-Allow-Credentials": "true",
-#             "X-Accel-Buffering": "no",  # 禁用nginx缓冲
-#             "Content-Type": "text/event-stream; charset=utf-8",
-#             "Transfer-Encoding": "chunked",
-#             "Keep-Alive": "timeout=300, max=1000",  # 设置keep-alive参数
-#         },
+#     # 使用改进的流式生成器
+#     stream_generator = create_improved_agent_stream(
+#         state_manager,
+#         user_id,
+#         chat_id,
+#         request,
 #     )
+#
+#     # 返回带错误处理的流式响应
+#     return create_stream_response_with_error_handling(stream_generator)
+
+
+async def _handle_new_stream(
+    user_id: str,
+    chat_id: str,
+    request: ComputerUseRequest,
+):
+    """处理新的流式任务"""
+    logger.info(f"开始新任务，用户: {user_id}, 对话: {chat_id}")
+
+    async def agent_stream():
+        """Agent流式响应生成器 - 支持序列号存储"""
+        task_id = None
+        try:
+
+            # 创建AgentScope Context模拟对象
+            class MockContext:
+                def __init__(self, request):
+                    self.request = request
+
+            context = MockContext(request)
+
+            # 清空旧的流式数据
+            await state_manager.clear_stream_data(user_id, chat_id)
+
+            # 设置任务状态
+            await state_manager.update_chat_state(
+                user_id,
+                chat_id,
+                {
+                    "is_running": True,
+                    "current_task": f"Agent API Task from input:"
+                    f" {len(request.input)} messages",
+                },
+            )
+
+            # 重新获取更新后的state
+            chat_state = await state_manager.get_chat_state(user_id, chat_id)
+            task_id = chat_state.get("task_id")
+
+            # 创建Agent配置
+            agent_config = {
+                "equipment": chat_state.get("equipment"),
+                "output_dir": ".",
+                "sandbox_type": chat_state.get("sandbox_type"),
+                "status_callback": None,
+                "mode": (
+                    "phone_use"
+                    if chat_state.get("sandbox_type") == "phone_wuyin"
+                    else "pc_use"
+                ),
+                "pc_use_add_info": request.config.pc_use_addon_info,
+                "max_steps": request.config.max_steps,
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "e2e_info": request.config.e2e_info,
+                "extra_params": request.config.extra_params,
+                "state_manager": state_manager,
+            }
+
+            # 创建Agent实例
+            agent = ComputerUseAgent(
+                name="ComputerUseAgent",
+                agent_config=agent_config,
+            )
+
+            # 将agent引用存储在应用状态中，支持多实例部署
+            app.state.running_agents[f"{user_id}:{chat_id}"] = agent
+
+            # 将agent标识存储到Redis（仅用于状态检查，不是真实对象）
+            await state_manager.update_chat_state(
+                user_id,
+                chat_id,
+                {
+                    "agent_running": True,
+                    "agent_id": id(agent),  # 存储agent的标识符
+                },
+            )
+
+            logger.info(f"开始Agent执行，用户: {user_id}, 对话: {chat_id}")
+            # 执行Agent任务并处理流式输出
+            async_iterator = None
+
+            # 心跳机制变量
+            last_heartbeat = time.time()
+            heartbeat_interval = 30  # 30秒心跳间隔
+
+            try:
+                async_iterator = agent.run_async(context)
+                async for result in async_iterator:
+                    # 检查是否需要发送心跳
+                    current_time = time.time()
+                    if current_time - last_heartbeat >= heartbeat_interval:
+                        heartbeat_data = {
+                            "object": "heartbeat",
+                            "type": "heartbeat",
+                            "timestamp": current_time,
+                            "status": "alive",
+                            "user_id": user_id,
+                            "chat_id": chat_id,
+                        }
+
+                        # 尝试存储心跳到Redis（失败也不影响发送）
+                        try:
+                            heartbeat_sequence = await safe_redis_operation(
+                                state_manager.store_stream_data,
+                                user_id,
+                                chat_id,
+                                heartbeat_data,
+                                task_id,
+                                timeout=5.0,
+                                max_retries=1,
+                            )
+                            heartbeat_data["sequence_number"] = (
+                                heartbeat_sequence
+                            )
+                        except Exception as heartbeat_redis_error:
+                            logger.warning(
+                                f"心跳存储到Redis失败: {heartbeat_redis_error}",
+                            )
+                            heartbeat_data["sequence_number"] = None
+
+                        # 发送心跳
+                        heartbeat_json = json.dumps(
+                            heartbeat_data,
+                            ensure_ascii=False,
+                        )
+                        yield f"data: {heartbeat_json}\n\n"
+                        last_heartbeat = current_time
+
+                    try:
+                        # 将Agent的输出转换为JSON格式
+                        if hasattr(result, "model_dump"):
+                            result_dict = result.model_dump()
+                        else:
+                            result_dict = _serialize(result)
+
+                        # 直接使用Agent返回的原始数据，只添加序列号
+                        sequence_number = await safe_redis_operation(
+                            state_manager.store_stream_data,
+                            user_id,
+                            chat_id,
+                            result_dict,
+                            task_id,
+                            timeout=10.0,
+                            max_retries=2,
+                        )
+
+                        if sequence_number is not None:
+                            result_dict["sequence_number"] = sequence_number
+                        else:
+                            # Redis存储失败，但仍然发送数据
+                            result_dict["sequence_number"] = None
+                            result_dict["storage_warning"] = (
+                                "数据未能存储到Redis"
+                            )
+
+                        json_str = json.dumps(result_dict, ensure_ascii=False)
+                        yield f"data: {json_str}\n\n"
+
+                    except Exception as serialize_error:
+                        logger.error(f"处理输出时出错: {serialize_error}")
+                        # 存储错误信息
+                        error_data = {
+                            "error": f"序列化输出时出错: {str(serialize_error)}",
+                            "type": "serialization_error",
+                        }
+
+                        sequence_number = await safe_redis_operation(
+                            state_manager.store_stream_data,
+                            user_id,
+                            chat_id,
+                            error_data,
+                            task_id,
+                            timeout=5.0,
+                            max_retries=1,
+                        )
+
+                        # 获取Redis中已标准化的错误数据（如果存储成功）
+                        if sequence_number is not None:
+                            stored_error_list = await state_manager.get_stream_data_from_sequence(
+                                user_id,
+                                chat_id,
+                                sequence_number,
+                                task_id,
+                            )
+
+                            if stored_error_list:
+                                _d = json.dumps(
+                                    stored_error_list[0],
+                                    ensure_ascii=False,
+                                )
+                                yield f"data: {_d}\n\n"
+                            else:
+                                # 降级方案
+                                error_output = {
+                                    "sequence_number": sequence_number,
+                                    "object": "error",
+                                    "status": "error",
+                                    "error": str(serialize_error),
+                                    "type": "error",
+                                    "data": error_data,
+                                }
+                                _data = json.dumps(
+                                    error_output,
+                                    ensure_ascii=False,
+                                )
+                                yield f"data: {_data}\n\n"
+                        else:
+                            # Redis存储失败，直接发送错误信息
+                            error_output = {
+                                "sequence_number": None,
+                                "object": "error",
+                                "status": "error",
+                                "error": str(serialize_error),
+                                "type": "error",
+                                "data": error_data,
+                                "storage_warning": "错误信息未能存储到Redis",
+                            }
+                            _data = json.dumps(
+                                error_output,
+                                ensure_ascii=False,
+                            )
+                            yield f"data: {_data}\n\n"
+                        continue
+
+            except Exception as iteration_error:
+                logger.error(f"Agent执行时出错: {iteration_error}")
+                # 存储执行错误
+                error_data = {
+                    "error": f"Agent执行时出错: {str(iteration_error)}",
+                    "type": "iteration_error",
+                }
+
+                sequence_number = await safe_redis_operation(
+                    state_manager.store_stream_data,
+                    user_id,
+                    chat_id,
+                    error_data,
+                    task_id,
+                    timeout=5.0,
+                    max_retries=1,
+                )
+
+                # 获取Redis中已标准化的错误数据（如果存储成功）
+                if sequence_number is not None:
+                    stored_error_list = (
+                        await state_manager.get_stream_data_from_sequence(
+                            user_id,
+                            chat_id,
+                            sequence_number,
+                            task_id,
+                        )
+                    )
+
+                    if stored_error_list:
+                        _d = json.dumps(
+                            stored_error_list[0],
+                            ensure_ascii=False,
+                        )
+                        yield f"data: {_d}\n\n"
+                    else:
+                        # 降级方案
+                        error_output = {
+                            "sequence_number": sequence_number,
+                            "object": "error",
+                            "status": "error",
+                            "error": str(iteration_error),
+                            "type": "error",
+                            "data": error_data,
+                        }
+                        _d = json.dumps(error_output, ensure_ascii=False)
+                        yield f"data: {_d}\n\n"
+                else:
+                    # Redis存储失败，直接发送错误信息
+                    error_output = {
+                        "sequence_number": None,
+                        "object": "error",
+                        "status": "error",
+                        "error": str(iteration_error),
+                        "type": "error",
+                        "data": error_data,
+                        "storage_warning": "执行错误信息未能存储到Redis",
+                    }
+                    _d = json.dumps(error_output, ensure_ascii=False)
+                    yield f"data: {_d}\n\n"
+
+            finally:
+                # 清理资源
+                if async_iterator and hasattr(async_iterator, "aclose"):
+                    try:
+                        await async_iterator.aclose()
+                    except Exception as close_error:
+                        print(f"关闭异步迭代器时出错: {close_error}")
+
+            print(f"Agent执行完成，用户: {user_id}, 对话: {chat_id}")
+
+        except Exception as e:
+            logger.error(
+                f"Agent stream execution failed for user {user_id}, "
+                f"chat {chat_id}: {e}",
+            )
+            # 存储全局错误
+            error_data = {
+                "error": f"任务执行失败: {str(e)}",
+                "type": "agent_error",
+            }
+
+            try:
+                sequence_number = await safe_redis_operation(
+                    state_manager.store_stream_data,
+                    user_id,
+                    chat_id,
+                    error_data,
+                    task_id,
+                    timeout=5.0,
+                    max_retries=1,
+                )
+
+                # 获取Redis中已标准化的错误数据（如果存储成功）
+                if sequence_number is not None:
+                    stored_error_list = (
+                        await state_manager.get_stream_data_from_sequence(
+                            user_id,
+                            chat_id,
+                            sequence_number,
+                            task_id,
+                        )
+                    )
+
+                    if stored_error_list:
+                        _d = json.dumps(
+                            stored_error_list[0],
+                            ensure_ascii=False,
+                        )
+                        yield f"data: {_d}\n\n"
+                    else:
+                        # 降级方案
+                        error_output = {
+                            "sequence_number": sequence_number,
+                            "object": "error",
+                            "status": "error",
+                            "error": str(e),
+                            "type": "error",
+                            "data": error_data,
+                        }
+                        _d = json.dumps(error_output, ensure_ascii=False)
+                        yield f"data: {_d}\n\n"
+                else:
+                    # Redis存储失败，直接发送错误信息
+                    error_output = {
+                        "sequence_number": None,
+                        "object": "error",
+                        "status": "error",
+                        "error": str(e),
+                        "type": "error",
+                        "data": error_data,
+                        "storage_warning": "全局错误信息未能存储到Redis",
+                    }
+                    _d = json.dumps(error_output, ensure_ascii=False)
+                    yield f"data: {_d}\n\n"
+            except Exception as storage_error:
+                print(f"存储错误信息失败: {storage_error}")
+                # 最后的错误输出，不存储到Redis
+                final_error = {
+                    "sequence_number": None,
+                    "object": "error",
+                    "status": "error",
+                    "error": str(e),
+                    "type": "error",
+                    "data": {"error": str(e)},
+                }
+                _d = json.dumps(final_error, ensure_ascii=False)
+                yield f"data: {_d}\n\n"
+
+        finally:
+            # 清理状态
+            try:
+                # 清理agent引用
+                composite_key = f"{user_id}:{chat_id}"
+                if composite_key in app.state.running_agents:
+                    del app.state.running_agents[composite_key]
+
+                await state_manager.update_chat_state(
+                    user_id,
+                    chat_id,
+                    {
+                        "is_running": False,
+                        "current_task": None,
+                        "agent_running": False,
+                        "agent_id": None,
+                    },
+                )
+            except Exception as cleanup_error:
+                print(f"清理状态时出错: {cleanup_error}")
+
+    return StreamingResponse(
+        agent_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": "true",
+            "X-Accel-Buffering": "no",  # 禁用nginx缓冲
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Transfer-Encoding": "chunked",
+            "Keep-Alive": "timeout=300, max=1000",  # 设置keep-alive参数
+        },
+    )
 
 
 @app.post("/cua/switch_environment")
@@ -1670,7 +1731,7 @@ async def stop_task(user_id: str, chat_id: str):
     try:
         composite_key = f"{user_id}:{chat_id}"
         local_agent = app.state.running_agents.get(composite_key)
-        if local_agent and hasattr(local_agent, 'should_stop'):
+        if local_agent and hasattr(local_agent, "should_stop"):
             local_agent.should_stop = True
             logger.info("本地Agent停止标志已设置")
 
@@ -1862,7 +1923,11 @@ async def interrupt_wait(user_id: str, chat_id: str):
         raise HTTPException(status_code=400, detail="No running task")
 
     # 发布中断等待信号到所有机器
-    signal_sent = await publish_control_signal(user_id, chat_id, "interrupt_wait")
+    signal_sent = await publish_control_signal(
+        user_id,
+        chat_id,
+        "interrupt_wait",
+    )
 
     # 记录运行Agent的机器信息
     if agent_machine:
@@ -1874,7 +1939,7 @@ async def interrupt_wait(user_id: str, chat_id: str):
     try:
         composite_key = f"{user_id}:{chat_id}"
         local_agent = app.state.running_agents.get(composite_key)
-        if local_agent and hasattr(local_agent, 'interrupt_wait'):
+        if local_agent and hasattr(local_agent, "interrupt_wait"):
             local_agent.interrupt_wait()
             logger.info("本地Agent中断等待已调用")
         elif local_agent is None:
