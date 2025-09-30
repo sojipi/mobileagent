@@ -31,7 +31,7 @@ from agentbricks.components.sandbox_center.sandboxes.cloud_computer_wy import (
 )
 
 # 心跳超时时间（秒）
-heartbeat_timeout = os.getenv("HEARTBEAT_TIMEOUT", 30)
+heartbeat_timeout = float(os.getenv("HEARTBEAT_TIMEOUT", 120))
 
 
 class EnvironmentOperationStatus(Enum):
@@ -492,36 +492,6 @@ class RedisStateManager:
         else:
             logger.info("Instance IDs re-synced (no changes detected)")
 
-    # async def _force_reinitialize_resource_pool(self, allocator):
-    #     """强制重新初始化Redis中的实例池"""
-    #     """强制重新初始化Redis中的实例池"""
-    #     try:
-    #         # 直接重新设置实例池，而不是先删除再设置
-    #         if allocator.instance_ids:
-    #             # 清空集合后重新添加所有实例ID
-    #             await self.redis_client.delete(allocator.FREE_INSTANCES_KEY)
-    #             await self.redis_client.sadd(
-    #                 allocator.FREE_INSTANCES_KEY,
-    #                 *allocator.instance_ids
-    #             )
-    #             await self.redis_client.expire(
-    #                 allocator.FREE_INSTANCES_KEY,
-    #                 allocator.ALLOCATION_TTL
-    #             )
-    #             logger.info(
-    #                 f"Force reinitialized {allocator.resource_type} "
-    #                 f"resource pool with "
-    #                 f"{len(allocator.instance_ids)} instances"
-    #             )
-    #         else:
-    #             # 如果没有实例ID，确保清理掉旧的键
-    #             await self.redis_client.delete(allocator.FREE_INSTANCES_KEY)
-    #             logger.info(
-    #                 f"Cleaned up {allocator.resource_type} resource pool "
-    #                 f"(no instances available)"
-    #             )
-    #     except Exception as e:
-    #         logger.error(f"Force reinitialize resource pool failed: {e}")
     async def _force_reinitialize_resource_pool(self, allocator):
         """强制重新初始化Redis中的实例池"""
         try:
@@ -534,10 +504,6 @@ class RedisStateManager:
                     allocator.FREE_INSTANCES_KEY,
                     *allocator.instance_ids,
                 )
-                # await self.redis_client.expire(
-                #     allocator.FREE_INSTANCES_KEY,
-                #     allocator.ALLOCATION_TTL,
-                # )
                 logger.info(
                     f"Force reinitialized {allocator.resource_type} "
                     f"resource pool with "
@@ -1114,7 +1080,7 @@ class RedisStateManager:
         # 如果包含多个标准化字段，认为已经被标准化过了
         return has_standardized_fields
 
-    async def get_stream_data_from_sequence(
+    async def get_stream_seq(
         self,
         user_id: str,
         chat_id: str,
@@ -1386,7 +1352,7 @@ class RedisStateManager:
             queue_info = None
             if status == AllocationStatus.WAIT_TIMEOUT:
                 # 并行获取排队位置和总排队数
-                position_task = allocator.get_chat_wait_position_async(user_id)
+                position_task = allocator.get_chat_position(user_id)
                 queue_info_task = allocator.get_queue_info_async()
 
                 (position, _), queue_data = await asyncio.gather(
@@ -1824,12 +1790,12 @@ class RedisStateManager:
                     f"[release_user_resources] 清理用户 {user_id} 的排队状态",
                 )
                 pc_position, pc_wait_status = (
-                    await self.pc_allocator.get_chat_wait_position_async(
+                    await self.pc_allocator.get_chat_position(
                         user_id,
                     )
                 )
                 phone_position, phone_wait_status = (
-                    await self.phone_allocator.get_chat_wait_position_async(
+                    await self.phone_allocator.get_chat_position(
                         user_id,
                     )
                 )
@@ -1984,7 +1950,10 @@ class RedisStateManager:
                 # 方法2：检查内存中的心跳记录（兜底检查）
                 memory_expired = []
                 for chat_id, last_heartbeat in self.heartbeats.items():
-                    if current_time - last_heartbeat > heartbeat_timeout:
+                    if (
+                        last_heartbeat
+                        and current_time - last_heartbeat > heartbeat_timeout
+                    ):
                         memory_expired.append(chat_id)
 
                 # 合并去重
@@ -2013,7 +1982,10 @@ class RedisStateManager:
                         memory_heartbeat,
                     )
 
-                    if current_time - latest_heartbeat > heartbeat_timeout:
+                    if (
+                        latest_heartbeat
+                        and current_time - latest_heartbeat > heartbeat_timeout
+                    ):
                         confirmed_expired.append(composite_key)
                         logger.warning(
                             f"[HeartbeatMonitor] 确认用户心跳超时: {composite_key} "
@@ -2045,7 +2017,8 @@ class RedisStateManager:
                             )
                             if chat_state.get("is_running"):
                                 logger.info(
-                                    f"[HeartbeatMonitor] 停止用户任务: {composite_key}",
+                                    "[HeartbeatMonitor] 停止用户任务:"
+                                    f" {composite_key}",
                                 )
                                 await self.stop_task(user_id, chat_id)
                                 await asyncio.sleep(1)  # 给任务一点时间停止
@@ -2065,7 +2038,7 @@ class RedisStateManager:
                                 )
 
                                 # 2. 彻底清理用户的所有Redis资源
-                                await self._thorough_cleanup_user_resources(
+                                await self._thorough_cleanup_u_res(
                                     user_id,
                                     chat_id,
                                 )
@@ -2074,28 +2047,34 @@ class RedisStateManager:
                                     del self.heartbeats[composite_key]
                                 que_ask = True
                                 logger.info(
-                                    f"[HeartbeatMonitor] 成功彻底清理用户资源: {composite_key}",
+                                    f"[HeartbeatMonitor] 成功彻底清理用户资源"
+                                    f": {composite_key}",
                                 )
 
                             else:
                                 logger.info(
-                                    f"检测当前用户{user_id}活跃会话{activate_chat_id}是否心跳过期",
+                                    "检测当前用户{user_id}活跃会话"
+                                    f"{activate_chat_id}是否心跳过期",
                                 )
                                 redis_heartbeat = await self.get_heartbeat(
                                     user_id,
                                     activate_chat_id,
                                 )
 
+                                # 修复后的代码
                                 if (
-                                    current_time - redis_heartbeat
+                                    redis_heartbeat
+                                    and current_time - redis_heartbeat
                                     > heartbeat_timeout
                                 ):
                                     confirmed_expired.append(composite_key)
+                                    _time = current_time - redis_heartbeat
                                     logger.warning(
-                                        f"[HeartbeatMonitor] 确认用户{user_id}最新活跃会话心跳超时: "
-                                        f"(超时 {current_time - redis_heartbeat:.1f}秒)",
+                                        "[HeartbeatMonitor] 确认用户"
+                                        f"{user_id}最新活跃会话心跳超时: 超时"
+                                        f"({_time:.1f}秒)",
                                     )
-                                    await self._thorough_cleanup_user_resources(
+                                    await self._thorough_cleanup_u_res(
                                         user_id,
                                         chat_id,
                                     )
@@ -2104,7 +2083,8 @@ class RedisStateManager:
                                         del self.heartbeats[composite_key]
                                     que_ask = True
                                     logger.info(
-                                        f"[HeartbeatMonitor] 成功彻底清理用户资源: {composite_key}",
+                                        "[HeartbeatMonitor] 成功彻底清理"
+                                        f"用户资源: {composite_key}",
                                     )
                                 else:
                                     logger.info(
@@ -2120,15 +2100,18 @@ class RedisStateManager:
                             )
 
                             if (
-                                current_time - redis_heartbeat
+                                redis_heartbeat
+                                and current_time - redis_heartbeat
                                 > heartbeat_timeout
                             ):
                                 confirmed_expired.append(composite_key)
+                                _time = current_time - redis_heartbeat
                                 logger.warning(
-                                    f"[HeartbeatMonitor] 确认用户{user_id}最新活跃会话心跳超时: "
-                                    f"(超时 {current_time - redis_heartbeat:.1f}秒)",
+                                    f"[HeartbeatMonitor] 确认用户{user_id}"
+                                    "最新活跃会话心跳超时: "
+                                    f"(超时 {_time:.1f}秒)",
                                 )
-                                await self._thorough_cleanup_user_resources(
+                                await self._thorough_cleanup_u_res(
                                     user_id,
                                     chat_id,
                                 )
@@ -2137,7 +2120,8 @@ class RedisStateManager:
                                     del self.heartbeats[composite_key]
 
                                 logger.info(
-                                    f"[HeartbeatMonitor] 成功彻底清理用户资源: {composite_key}",
+                                    "[HeartbeatMonitor] 成功彻底清理用户资源"
+                                    f": {composite_key}",
                                 )
 
                             else:
@@ -2146,48 +2130,45 @@ class RedisStateManager:
                                 )
 
                         if que_ask:
-                            # 清理用户排队状态
-                            try:
-                                logger.info(
-                                    f"[release_user_resources] 清理用户 {user_id} 的排队状态",
-                                )
-                                pc_position, pc_wait_status = (
-                                    await self.pc_allocator.get_chat_wait_position_async(
-                                        user_id,
-                                    )
-                                )
-                                phone_position, phone_wait_status = (
-                                    await self.phone_allocator.get_chat_wait_position_async(
-                                        user_id,
-                                    )
-                                )
+                            logger.info(
+                                f"[release_user_resources] 清理用户"
+                                f" {user_id} 的排队状态",
+                            )
+                            (
+                                pc_position,
+                                pc_wait_status,
+                            ) = await self.pc_allocator.get_chat_position(
+                                user_id,
+                            )
+                            (
+                                phone_position,
+                                phone_wait_status,
+                            ) = await self.phone_allocator.get_chat_position(
+                                user_id,
+                            )
 
-                                if pc_wait_status == AllocationStatus.SUCCESS:
-                                    await self.pc_allocator.cancel_wait_async(
-                                        user_id,
-                                    )
-                                    logger.info(
-                                        f"[release_user_resources] 已取消用户 {user_id} 的PC排队",
-                                    )
-                                if (
-                                    phone_wait_status
-                                    == AllocationStatus.SUCCESS
-                                ):
-                                    await self.phone_allocator.cancel_wait_async(
-                                        user_id,
-                                    )
-                                    logger.info(
-                                        f"[release_user_resources] 已取消用户 {user_id} 的手机排队",
-                                    )
-                            except Exception as e:
-                                logger.error(
-                                    f"[release_user_resources] 清理用户 {user_id} 排队状态出错: {e}",
+                            if pc_wait_status == AllocationStatus.SUCCESS:
+                                await self.pc_allocator.cancel_wait_async(
+                                    user_id,
+                                )
+                                logger.info(
+                                    "[release_user_resources] 已取消用户"
+                                    f" {user_id} 的PC排队",
+                                )
+                            if phone_wait_status == AllocationStatus.SUCCESS:
+                                await self.phone_allocator.cancel_wait_async(
+                                    user_id,
+                                )
+                                logger.info(
+                                    "[release_user_resources] 已取消"
+                                    f"用户 {user_id} 的手机排队",
                                 )
 
                             # 通知排队用户资源可用
                             logger.info(
-                                f"[release_user_resources] 释放了 {released_resource_type} "
-                                f"资源，通知排队用户",
+                                "[release_user_resources] "
+                                f"释放了 {released_resource_type} "
+                                "资源，通知排队用户",
                             )
                             asyncio.create_task(
                                 self._notify_queued_users(
@@ -2195,22 +2176,31 @@ class RedisStateManager:
                                 ),
                             )
 
-                    except Exception as e:
+                    except (
+                        Exception
+                    ) as user_cleanup_exception:  # 修复2: 正确命名异常变量
                         logger.error(
                             f"[HeartbeatMonitor] 清理用户 {composite_key} "
-                            f"资源时出错: {e}",
+                            f"资源时出错: {user_cleanup_exception}",
                         )
                         import traceback
 
                         logger.error(
-                            f"[HeartbeatMonitor] 错误详情: "
-                            f"{traceback.format_exc()}",
+                            f"[HeartbeatMonitor] 错误详情"
+                            f": {traceback.format_exc()}",
                         )
 
                 await asyncio.sleep(10)  # 调整监控间隔为10秒，更及时响应
 
-            except Exception as e:
-                logger.error(f"Redis heartbeat monitor error: {e}")
+            except Exception as monitor_exception:  # 修复3: 正确命名异常变量
+                logger.error(
+                    f"Redis heartbeat monitor error: {monitor_exception}",
+                )
+                import traceback
+
+                logger.error(
+                    f"Monitor error details: {traceback.format_exc()}",
+                )
                 await asyncio.sleep(10)
 
     async def clear_user_chat_redis_data(
@@ -2227,12 +2217,12 @@ class RedisStateManager:
 
         if not is_valid:
             # 2. 彻底清理用户的所有Redis资源
-            await self._thorough_cleanup_user_resources(
+            await self._thorough_cleanup_u_res(
                 user_id,
                 chat_id,
             )
 
-    async def _thorough_cleanup_user_resources(
+    async def _thorough_cleanup_u_res(
         self,
         user_id: str,
         chat_id: str,
@@ -2240,7 +2230,7 @@ class RedisStateManager:
         """彻底清理用户的所有Redis资源 - 增强版"""
         try:
             logger.info(
-                f"[_thorough_cleanup_user_resources] 开始彻底清理用户 "
+                f"[_thorough_cleanup_u_res] 开始彻底清理用户 "
                 f"{user_id}:{chat_id} 的所有资源",
             )
 
@@ -2255,19 +2245,19 @@ class RedisStateManager:
             # 4. 清理用户级别的Redis数据
             await self._cleanup_user_level_data(user_id, chat_id)
             logger.info(
-                f"[_thorough_cleanup_user_resources] 彻底清理完成: "
+                f"[_thorough_cleanup_u_res] 彻底清理完成: "
                 f"{user_id}:{chat_id}",
             )
 
         except Exception as e:
             logger.error(
-                f"[_thorough_cleanup_user_resources] 彻底清理用户 "
+                f"[_thorough_cleanup_u_res] 彻底清理用户 "
                 f"{user_id}:{chat_id} 时出错: {e}",
             )
             import traceback
 
             logger.error(
-                f"[_thorough_cleanup_user_resources] 错误详情: "
+                f"[_thorough_cleanup_u_res] 错误详情: "
                 f"{traceback.format_exc()}",
             )
 
@@ -2371,7 +2361,7 @@ class RedisStateManager:
             # 清理PC分配器中的排队记录
             try:
                 pc_position, pc_wait_status = (
-                    await self.pc_allocator.get_chat_wait_position_async(
+                    await self.pc_allocator.get_chat_position(
                         user_id,
                     )
                 )
@@ -2388,7 +2378,7 @@ class RedisStateManager:
             # 清理手机分配器中的排队记录
             try:
                 phone_position, phone_wait_status = (
-                    await self.phone_allocator.get_chat_wait_position_async(
+                    await self.phone_allocator.get_chat_position(
                         user_id,
                     )
                 )
@@ -2579,7 +2569,10 @@ class RedisStateManager:
                     user_id,
                     current_active_chat,
                 )
-                if current_time - redis_heartbeat < heartbeat_timeout:
+                if (
+                    redis_heartbeat
+                    and current_time - redis_heartbeat < heartbeat_timeout
+                ):
                     is_same_session_reactivation = True
                     activate_flag = True
 
