@@ -473,7 +473,7 @@ class ComputerUseAgent(Agent):
                                 "step": f"{step_count}",
                                 "stage": "output",
                                 "type": "text",
-                                "text": "🔍 正在分析屏幕截图...",
+                                "text": "🔍 分析屏幕截图",
                             },
                         )
 
@@ -542,7 +542,7 @@ class ComputerUseAgent(Agent):
                             "step": f"{step_count}",
                             "stage": "output",
                             "type": "text",
-                            "text": "⚡ 执行操作中...",
+                            "text": "⚡ 执行操作",
                         },
                     )
 
@@ -678,7 +678,7 @@ class ComputerUseAgent(Agent):
                             "step": "",
                             "stage": "limit_completed",
                             "type": "text",
-                            "text": f"⚠️ 达到最大步数限制 ({self.max_steps})，任务停止",
+                            "text": f"达到最大步数限制 ({self.max_steps})，任务停止",
                         },
                     )
                     break
@@ -1382,27 +1382,7 @@ class ComputerUseAgent(Agent):
                 result = json.dumps(result_data, ensure_ascii=False)
 
             except Exception as e:
-                yield DataContent(
-                    data={
-                        "step": f"{step_count}",
-                        "stage": "error",
-                        "type": "SYSTEM",
-                        "text": "Error querying PC use model %s" % e,
-                    },
-                )
                 logger.error(f"Error querying PC use model: {e}")
-
-                # 发送分析阶段失败状态，确保前端不会卡在AI分析阶段
-                yield DataContent(
-                    data={
-                        "step": f"{step_count}",
-                        "stage": "error",
-                        "type": "analysis_stage",
-                        "text": "Analysis failed",
-                        "timestamp": time.time(),
-                        "uuid": str(uuid4()),
-                    },
-                )
                 raise RuntimeError(f"Error querying PC use model: {e}")
         elif self.mode == "phone_use":
             try:
@@ -1513,7 +1493,12 @@ class ComputerUseAgent(Agent):
                     ),
                 }
                 # 如果action包含括号，需要拆分
-                if action and "(" in action and ")" in action:
+                if (
+                    action
+                    and isinstance(action, str)
+                    and "(" in action
+                    and ")" in action
+                ):
                     # 提取括号前的部分作为action
                     action_part = action.split("(", 1)[0].strip()
                     # 提取括号及内部内容作为action_params
