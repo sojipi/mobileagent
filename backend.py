@@ -34,11 +34,7 @@ from agentbricks.utils.logger_util import logger
 from pydantic import BaseModel, field_validator, model_validator
 from typing import List, Optional
 from pydantic import ConfigDict
-from network_error_fixes import (
-    create_improved_agent_stream,
-    create_stream_response_with_error_handling,
-    IMPROVED_STREAM_HEADERS,
-)
+
 
 load_dotenv()
 
@@ -494,56 +490,6 @@ async def validate_user_session(
         return False
 
 
-@app.on_event("startup")
-async def startup_event():
-    global state_manager
-    # 使用Redis状态管理器
-    state_manager = RedisStateManager(
-        phone_instance_ids=PHONE_INSTANCE_IDS,
-        desktop_ids=DESKTOP_IDS,
-    )
-    await state_manager.initialize()
-
-    # 同步实例ID配置到Redis，确保与环境变量保持一致
-    logger.info("Synchronizing instance IDs with environment variables")
-    await state_manager.sync_instance_ids(
-        phone_instance_ids=PHONE_INSTANCE_IDS,
-        desktop_ids=DESKTOP_IDS,
-    )
-
-    # 启动心跳监控任务
-    asyncio.create_task(state_manager._monitor_heartbeats())
-
-    # 注册当前机器到Redis
-    try:
-        await state_manager.redis_client.hset(
-            "machine_registry",
-            MACHINE_ID,
-            json.dumps(
-                {
-                    "machine_id": MACHINE_ID,
-                    "startup_time": time.time(),
-                    "pid": os.getpid(),
-                },
-            ),
-        )
-        logger.info(f"机器 {MACHINE_ID} 已注册到Redis")
-    except Exception as e:
-        logger.error(f"注册机器信息失败: {e}")
-
-    logger.info(
-        "Backend startup completed with Redis "
-        f"state manager on machine {MACHINE_ID}",
-    )
-
-
-@app.get("/cua/delete_user_redis_data")
-async def delete_user_redis_data(user_id: str):
-    if not user_id:
-        return f"user_id: {user_id}"
-    await state_manager.clear_user_chat_redis_data(user_id, None)
-
-
 # 请求/响应模型
 class MessageContent(BaseModel):
     type: str
@@ -837,14 +783,15 @@ async def get_equipment(
                 )
                 # 处理资源排队情况
                 if status == AllocationStatus.WAIT_TIMEOUT:
+                    pc_a = state_manager.pc_allocator
                     position = (
-                        await state_manager.pc_allocator.get_chat_wait_position_async(
+                        await pc_a.get_chat_position(
                             f"{user_id}:{chat_id}",
                         )
                     )[0]
-                    total_waiting = (
-                        await state_manager.pc_allocator.get_queue_info_async()
-                    )["total_waiting"]
+                    total_waiting = (await pc_a.get_queue_info_async())[
+                        "total_waiting"
+                    ]
                     raise HTTPException(
                         status_code=429,
                         detail={
@@ -921,14 +868,15 @@ async def get_equipment(
                 )
                 # 处理资源排队情况
                 if status == AllocationStatus.WAIT_TIMEOUT:
+                    pc_a = state_manager.phone_allocator
                     position = (
-                        await state_manager.phone_allocator.get_chat_wait_position_async(
+                        await pc_a.get_chat_position(
                             f"{user_id}:{chat_id}",
                         )
                     )[0]
-                    total_waiting = (
-                        await state_manager.phone_allocator.get_queue_info_async()
-                    )["total_waiting"]
+                    total_waiting = (await pc_a.get_queue_info_async())[
+                        "total_waiting"
+                    ]
                     logger.warning(
                         f"Failed to allocate phone resource: {status}",
                     )
@@ -1012,86 +960,6 @@ async def get_equipment(
                         else None
                     ),
                 }
-
-
-# API端点
-@app.post("/cua/init")
-async def init_task(request: InitRequest, user_id: str = ""):
-    """触发异步环境初始化"""
-    if not user_id:
-        if request.user_id:
-            user_id = request.user_id
-        else:
-            user_id = request.config.user_id
-    logger.info(f"start init by user_id:{user_id}")
-    chat_id = request.config.chat_id
-    if not user_id or not chat_id:
-        raise HTTPException(
-            status_code=400,
-            detail="user_id and chat_id are required",
-        )
-    logger.info(
-        f"接收到任务请求，用户: {user_id}, 对话: {chat_id} "
-        f"request: {json.dumps(request.model_dump(), ensure_ascii=False)}",
-    )
-    try:
-        # 启动异步环境初始化操作
-        operation_id = await state_manager.start_environment_operation(
-            user_id,
-            chat_id,
-            "init",
-            request.config.dict(),
-        )
-
-        return {
-            "success": True,
-            "operation_id": operation_id,
-            "message": "Environment initialization started",
-            "status": "initializing",
-        }
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error starting init operation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/cua/run")
-async def run_task_stream(request: ComputerUseRequest, user_id: str = ""):
-    """
-    流式任务执行接口，支持序列号机制和断线续传
-    如果提供sequence_number，则返回历史数据；否则执行新任务
-    """
-    # 从请求中提取对话ID和配置
-    if not user_id:
-        if request.user_id:
-            user_id = request.user_id
-        else:
-            user_id = request.config.user_id
-    chat_id = request.config.chat_id if request.config else ""
-    logger.info(f"start run by user_id:{user_id}")
-    if not user_id or not chat_id:
-        raise HTTPException(400, "user_id and chat_id are required in config")
-
-    # 验证用户会话有效性（非严格模式，因为心跳可能还没建立）
-    await validate_user_session(user_id, chat_id, strict_mode=False)
-
-    sequence_number = request.sequence_number
-
-    logger.info(
-        f"接收到任务请求，用户: {user_id}, 对话: {chat_id}, "
-        f"序列号: {sequence_number} , request: "
-        f"{json.dumps(request.model_dump(), ensure_ascii=False)}",
-    )
-    # 如果提供了序列号，返回历史数据（断线续传）
-    if sequence_number is not None:
-        return await _handle_resume_stream(user_id, chat_id, sequence_number)
-
-    # 否则执行新任务
-    if not request.input:
-        raise HTTPException(400, "No input messages provided")
-
-    return await _handle_new_stream(user_id, chat_id, request)
 
 
 async def _handle_resume_stream(
@@ -1188,26 +1056,6 @@ async def _handle_resume_stream(
             "Keep-Alive": "timeout=300, max=1000",  # 设置keep-alive参数
         },
     )
-
-
-# async def _handle_new_stream(
-#     user_id: str,
-#     chat_id: str,
-#     request: ComputerUseRequest,
-# ):
-#     """处理新的流式任务 - 改进版"""
-#     logger.info(f"开始新任务，用户: {user_id}, 对话: {chat_id}")
-#
-#     # 使用改进的流式生成器
-#     stream_generator = create_improved_agent_stream(
-#         state_manager,
-#         user_id,
-#         chat_id,
-#         request,
-#     )
-#
-#     # 返回带错误处理的流式响应
-#     return create_stream_response_with_error_handling(stream_generator)
 
 
 async def _handle_new_stream(
@@ -1388,11 +1236,13 @@ async def _handle_new_stream(
 
                         # 获取Redis中已标准化的错误数据（如果存储成功）
                         if sequence_number is not None:
-                            stored_error_list = await state_manager.get_stream_data_from_sequence(
-                                user_id,
-                                chat_id,
-                                sequence_number,
-                                task_id,
+                            stored_error_list = (
+                                await state_manager.get_stream_seq(
+                                    user_id,
+                                    chat_id,
+                                    sequence_number,
+                                    task_id,
+                                )
                             )
 
                             if stored_error_list:
@@ -1620,6 +1470,90 @@ async def _handle_new_stream(
     )
 
 
+@app.on_event("startup")
+async def startup_event():
+    global state_manager
+    # 使用Redis状态管理器
+    state_manager = RedisStateManager(
+        phone_instance_ids=PHONE_INSTANCE_IDS,
+        desktop_ids=DESKTOP_IDS,
+    )
+    await state_manager.initialize()
+
+    # 同步实例ID配置到Redis，确保与环境变量保持一致
+    logger.info("Synchronizing instance IDs with environment variables")
+    await state_manager.sync_instance_ids(
+        phone_instance_ids=PHONE_INSTANCE_IDS,
+        desktop_ids=DESKTOP_IDS,
+    )
+
+    # 启动心跳监控任务
+    asyncio.create_task(state_manager._monitor_heartbeats())
+
+    # 注册当前机器到Redis
+    try:
+        await state_manager.redis_client.hset(
+            "machine_registry",
+            MACHINE_ID,
+            json.dumps(
+                {
+                    "machine_id": MACHINE_ID,
+                    "startup_time": time.time(),
+                    "pid": os.getpid(),
+                },
+            ),
+        )
+        logger.info(f"机器 {MACHINE_ID} 已注册到Redis")
+    except Exception as e:
+        logger.error(f"注册机器信息失败: {e}")
+
+    logger.info(
+        "Backend startup completed with Redis "
+        f"state manager on machine {MACHINE_ID}",
+    )
+
+
+@app.post("/cua/init")
+async def init_task(request: InitRequest, user_id: str = ""):
+    """触发异步环境初始化"""
+    if not user_id:
+        if request.user_id:
+            user_id = request.user_id
+        else:
+            user_id = request.config.user_id
+    logger.info(f"start init by user_id:{user_id}")
+    chat_id = request.config.chat_id
+    if not user_id or not chat_id:
+        raise HTTPException(
+            status_code=400,
+            detail="user_id and chat_id are required",
+        )
+    logger.info(
+        f"接收到任务请求，用户: {user_id}, 对话: {chat_id} "
+        f"request: {json.dumps(request.model_dump(), ensure_ascii=False)}",
+    )
+    try:
+        # 启动异步环境初始化操作
+        operation_id = await state_manager.start_environment_operation(
+            user_id,
+            chat_id,
+            "init",
+            request.config.dict(),
+        )
+
+        return {
+            "success": True,
+            "operation_id": operation_id,
+            "message": "Environment initialization started",
+            "status": "initializing",
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Error starting init operation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/cua/switch_environment")
 async def switch_environment(request: InitRequest):
     """触发异步环境切换"""
@@ -1708,6 +1642,44 @@ async def get_operation_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/cua/run")
+async def run_task_stream(request: ComputerUseRequest, user_id: str = ""):
+    """
+    流式任务执行接口，支持序列号机制和断线续传
+    如果提供sequence_number，则返回历史数据；否则执行新任务
+    """
+    # 从请求中提取对话ID和配置
+    if not user_id:
+        if request.user_id:
+            user_id = request.user_id
+        else:
+            user_id = request.config.user_id
+    chat_id = request.config.chat_id if request.config else ""
+    logger.info(f"start run by user_id:{user_id}")
+    if not user_id or not chat_id:
+        raise HTTPException(400, "user_id and chat_id are required in config")
+
+    # 验证用户会话有效性（非严格模式，因为心跳可能还没建立）
+    await validate_user_session(user_id, chat_id, strict_mode=False)
+
+    sequence_number = request.sequence_number
+
+    logger.info(
+        f"接收到任务请求，用户: {user_id}, 对话: {chat_id}, "
+        f"序列号: {sequence_number} , request: "
+        f"{json.dumps(request.model_dump(), ensure_ascii=False)}",
+    )
+    # 如果提供了序列号，返回历史数据（断线续传）
+    if sequence_number is not None:
+        return await _handle_resume_stream(user_id, chat_id, sequence_number)
+
+    # 否则执行新任务
+    if not request.input:
+        raise HTTPException(400, "No input messages provided")
+
+    return await _handle_new_stream(user_id, chat_id, request)
+
+
 @app.get("/cua/stop")
 async def stop_task(user_id: str, chat_id: str):
     logger.info(f"stop task by user_id:{user_id} , chat_id: {chat_id}")
@@ -1782,16 +1754,6 @@ async def heartbeat(user_id: str, chat_id: str):
                 f"Invalid chat session for user {user_id}, chat {chat_id}"
                 f", active: {current_active_chat}",
             )
-            # 为失效的会话返回明确的状态信息
-            # return {
-            #     "success": True,
-            #     "is_active_chat": True,
-            #     "status": "success",
-            #     "message": "Current chat is no longer active. "
-            #     "Another session may be active for this user.",
-            #     "active_chat_id": current_active_chat,
-            #     "error_code": "CHAT_INACTIVE",
-            # }
 
         # 只为有效会话更新心跳记录
         await state_manager.set_heartbeat(user_id, chat_id)
@@ -1821,7 +1783,7 @@ async def get_queue_status(user_id: str, chat_id: str, sandbox_type: str):
         if sandbox_type == "pc_wuyin":
             # 使用PC分配器并调用异步方法
             position, status = (
-                await state_manager.pc_allocator.get_chat_wait_position_async(
+                await state_manager.pc_allocator.get_chat_position(
                     user_id,
                 )
             )
@@ -1839,18 +1801,15 @@ async def get_queue_status(user_id: str, chat_id: str, sandbox_type: str):
                 }
         elif sandbox_type == "phone_wuyin":
             # 使用手机分配器并调用异步方法
-            position, status = (
-                await state_manager.phone_allocator.get_chat_wait_position_async(  # noqa E501
-                    user_id=user_id,
-                )
+            s_p = state_manager.phone_allocator
+            position, status = await s_p.get_chat_position(  # noqa E501
+                user_id=user_id,
             )
             if (
                 status == AllocationStatus.SUCCESS
                 or status == AllocationStatus.CHAT_ALREADY_ALLOCATED
             ):
-                queue_info = (
-                    await state_manager.phone_allocator.get_queue_info_async()
-                )
+                queue_info = await s_p.get_queue_info_async()
                 return {
                     "position": position,
                     "total_waiting": queue_info["total_waiting"],
@@ -1882,7 +1841,7 @@ async def get_queue_status(user_id: str, chat_id: str, sandbox_type: str):
         }
 
 
-# 添加代理端点来验证 studio token
+# 添加代理端点来验证（魔搭场景接口） studio token
 @app.get("/cua/proxy/validate-studio-token")
 async def proxy_validate_studio_token(studio_token: str = Query(...)):
     """
@@ -1910,6 +1869,7 @@ async def proxy_validate_studio_token(studio_token: str = Query(...)):
 
 @app.get("/cua/interrupt_wait")
 async def interrupt_wait(user_id: str, chat_id: str):
+    # 人工干预接口
     logger.info(f"interrupt_wait by user_id:{user_id} , chat_id: {chat_id}")
     # 验证用户会话有效性（非严格模式）
     await validate_user_session(user_id, chat_id, strict_mode=False)
