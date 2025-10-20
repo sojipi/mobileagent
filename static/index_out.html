@@ -663,7 +663,8 @@
                 // 本地环境直接返回本地用户和对话ID
                 console.log("检测为本地环境，使用本地用户和对话ID");
                 isTokenValidated = true; // 本地环境直接标记为已验证
-                return { userId: 'local_user', chatId: 'local_chat' };
+                const chatId = 'chat_' + Math.random().toString(36).substr(2, 9);
+                return { userId: 'local_user', chatId: chatId };
             } else {
                 // 远程环境保持原有逻辑
                 console.log("检测为远程环境，使用远程认证");

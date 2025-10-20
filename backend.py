@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from dotenv import load_dotenv
 from computer_use_agent import ComputerUseAgent
-from agentbricks.schemas.agent import AgentRequest
+from agents.agent import AgentRequest
 from redis_resource_allocator import (
     AllocationStatus,
 )
@@ -23,14 +23,14 @@ from enum import Enum
 from redis_state_manager import RedisStateManager
 
 # 云设备导入
-from agentbricks.components.sandbox_center.sandboxes.cloud_phone_wy import (
+from sandbox_center.sandboxes.cloud_phone_wy import (
     CloudPhone,
 )
-from agentbricks.components.sandbox_center.sandboxes.cloud_computer_wy import (
+from sandbox_center.sandboxes.cloud_computer_wy import (
     CloudComputer,
 )
 
-from agentbricks.utils.logger_util import logger
+from agentscope_bricks.utils.logger_util import logger
 from pydantic import BaseModel, field_validator, model_validator
 from typing import List, Optional
 from pydantic import ConfigDict
@@ -1626,7 +1626,7 @@ async def get_operation_status(
             return {
                 "success": False,
                 "status": "failed",
-                "error": "Operation not found",
+                "error": "等待超时，请重新激活！",
                 "user_id": user_id,
                 "chat_id": chat_id,
                 "operation_id": operation_id,
