@@ -22,13 +22,7 @@ from enum import Enum
 # 导入Redis状态管理器
 from redis_state_manager import RedisStateManager
 
-# 云设备导入
-from sandbox_center.sandboxes.cloud_phone_wy import (
-    CloudPhone,
-)
-from sandbox_center.sandboxes.cloud_computer_wy import (
-    CloudComputer,
-)
+
 
 from agentscope_bricks.utils.logger_util import logger
 from pydantic import BaseModel, field_validator, model_validator

@@ -9,14 +9,11 @@ from typing import Optional, Any, AsyncGenerator, Union
 from agentscope_bricks.utils.grounding_utils import draw_point, encode_image
 from pathlib import Path
 import time  # 添加 time 模块导入
-from sandbox_center.sandboxes.cloud_computer_wy import (
-    CloudComputer,
+from sandbox_center.sandboxes.e2b_sandbox import (
+    E2bSandBox,
 )
 from sandbox_center.utils.utils import (
     get_image_size_from_url,
-)
-from sandbox_center.sandboxes.cloud_phone_wy import (
-    CloudPhone,
 )
 import asyncio
 
@@ -62,7 +59,7 @@ class ComputerUseAgent(Agent):
         equipment = config.get("equipment")
         # output_dir = config.get("output_dir", ".")
         mode = config.get("mode", "pc_use")
-        sandbox_type = config.get("sandbox_type", "pc_wuyin")
+        sandbox_type = config.get("sandbox_type", "e2b")
         status_callback = config.get("status_callback")
         pc_use_add_info = config.get("pc_use_add_info", "")
         max_steps = config.get("max_steps", 20)
@@ -177,28 +174,21 @@ class ComputerUseAgent(Agent):
     async def _initialize_device_from_info(self, equipment_info):
         """根据设备信息初始化设备对象"""
         equipment_type = equipment_info["equipment_type"]
-        instance_info = equipment_info["instance_manager_info"]
 
-        if equipment_type == "pc_wuyin":
+        if equipment_type == "e2b_desktop":
             return await self._create_device(
-                CloudComputer,
-                instance_info["desktop_id"],
-            )
-        elif equipment_type == "phone_wuyin":
-            return await self._create_device(
-                CloudPhone,
-                instance_info["instance_id"],
+                E2bSandBox,
             )
         else:
             raise Exception(f"不支持的设备类型: {equipment_type}")
 
-    async def _create_device(self, device_class, device_id):
+    async def _create_device(self, device_class):
         """创建设备实例，自动处理事件循环问题"""
         try:
-            if device_class == CloudComputer:
-                device = CloudComputer(desktop_id=device_id)
-            else:  # CloudPhone
-                device = CloudPhone(instance_id=device_id)
+            if device_class == E2bSandBox:
+                device = E2bSandBox()
+            else:
+                raise Exception(f"不支持的设备类型: {device_class.__name__}")
             await device.initialize()
             return device
         except RuntimeError as e:
@@ -219,10 +209,10 @@ class ComputerUseAgent(Agent):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            if device_class == CloudComputer:
-                device = CloudComputer(desktop_id=device_id)
+            if device_class == E2bSandBox:
+                device = E2bSandBox(sandbox_id=device_id)
             else:
-                device = CloudPhone(instance_id=device_id)
+                raise Exception(f"不支持的设备类型: {device_class.__name__}")
             loop.run_until_complete(device.initialize())
             return device
         finally:
@@ -1002,12 +992,11 @@ class ComputerUseAgent(Agent):
             # 下载图片到本地
             await self._download_image(oss_url, filepath)
 
-            # 重新上传到OSS获取新URL
-            new_oss_url = await self._upload_to_oss(filepath)
+            # 不使用OSS，直接返回本地文件路径
             self.latest_screenshot = filepath
 
             image_data = await self._read_image_file(filepath)
-            return image_data, new_oss_url, filename
+            return image_data, filepath, filename
         except Exception as e:
             raise Exception(f"手机截图失败: {str(e)}")
 
@@ -1030,13 +1019,8 @@ class ComputerUseAgent(Agent):
         return filepath, filename
 
     async def _upload_to_oss(self, filepath):
-        """上传文件到OSS"""
-        p = Path(filepath)
-        oss_filepath = f"{p.stem}_{uuid4().hex}{p.suffix}"
-        return await self.equipment.upload_file_and_sign(
-            filepath,
-            oss_filepath,
-        )
+        """返回本地文件路径（不使用OSS）"""
+        return filepath
 
     async def _download_image(self, url, filepath):
         """下载图片到本地"""

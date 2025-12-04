@@ -11,12 +11,7 @@ from typing import Tuple, List, Dict, Any, Optional
 import redis.asyncio as redis
 from agentscope_bricks.utils.logger_util import logger
 from enum import Enum, auto
-from sandbox_center.sandboxes.cloud_phone_wy import (
-    CloudPhone,
-)
-from sandbox_center.sandboxes.cloud_computer_wy import (
-    CloudComputer,
-)
+
 from fastapi import HTTPException
 
 
@@ -188,98 +183,8 @@ class AsyncRedisResourceAllocator:
 
             # 清理分配记录
             await self._clear_allocation(user_id, instance_id)
-            # 休眠,重置设备
-            if self.resource_type == "phone":
-                logger.info(f"[{self.resource_type}] 休眠,重置设备: {instance_id}")
-                equipment = await asyncio.to_thread(
-                    CloudPhone,
-                    instance_id=instance_id,
-                )
-                await equipment.initialize()
-                e_client = equipment.instance_manager.eds_client
-                should_reset_image = (
-                    os.environ.get("EQUIP_RESET", 1) == "1"
-                )
-                if should_reset_image:
-                    await self._wait_for_phone_ready(equipment, instance_id)
-                    # 重置实例镜像
-                    print(f"Equipment reset for user {user_id}")
-                    logger.info(f"Equipment reset for user {user_id}")
-                    method = e_client.reset_equipment
-                    status = await method([instance_id])
-                    if status != 200:
-                        raise HTTPException(
-                            503,
-                            "Failed to reset phone resource",
-                        )
-                else:
-                    logger.info(
-                        "跳过手机镜像重置: 同一会话重新激活或EQUIP_RESET未启用"
-                    )
-                await self._wait_for_phone_ready(
-                    equipment,
-                    instance_id,
-                    stability_check_duration=10,
-                )
-                # 停止设备
-                method = e_client.stop_equipment_async
-                status = await method(
-                    [instance_id]
-                )
-                if status != 200:
-                    raise HTTPException(
-                        503,
-                        "Failed to stop equipment resource",
-                    )
-            elif self.resource_type == "pc":
-                equipment = await asyncio.to_thread(
-                    CloudComputer,
-                    desktop_id=instance_id,
-                )
-                await equipment.initialize()
-                should_reset_image = (
-                    os.environ.get("EQUIP_RESET", 1) == "1"
-                )
-                e_client = equipment.instance_manager.ecd_client
-                if should_reset_image:
-                    logger.info("查询设备状态")
-                    await self._wait_for_pc_ready(
-                        equipment,
-                        instance_id,
-                        stability_check_duration=2,
-                    )
-                    # 重置实例镜像
-                    print(f"Equipment reset for user {user_id}")
-                    logger.info(f"Equipment reset for user {user_id}")
-                    method = e_client.rebuild_equipment_image
-                    status = await method(
-                        instance_id,
-                        os.environ.get("ECD_IMAGE_ID"),
-                    )
-                    if status != 200:
-                        raise HTTPException(
-                            503,
-                            "Failed to reset computer resource",
-                        )
-                else:
-                    logger.info(
-                        f"跳过镜像重置: 同一会话重新激活或EQUIP_RESET未启用 "
-                    )
-                # 休眠设备
-                await self._wait_for_pc_ready(
-                    equipment,
-                    instance_id,
-                    stability_check_duration=2,
-                )
-                method = e_client.hibernate_desktops_async
-                status = await method(
-                    [instance_id]
-                )
-                if status != 200:
-                    raise HTTPException(
-                        503,
-                        "Failed to hibernate equipment resource",
-                    )
+            # 简化处理：直接释放资源，不进行设备重置和休眠
+            logger.info(f"[{self.resource_type}] 资源 {instance_id} 已释放")
             # 将实例放回可用池
             await self.redis.sadd(self.FREE_INSTANCES_KEY, instance_id)
 
