@@ -11,12 +11,14 @@ from typing import Tuple, List, Dict, Any, Optional
 import redis.asyncio as redis
 from agentscope_bricks.utils.logger_util import logger
 from enum import Enum, auto
-from sandbox_center.sandboxes.cloud_phone_wy import (
-    CloudPhone,
-)
-from sandbox_center.sandboxes.cloud_computer_wy import (
-    CloudComputer,
-)
+# 云设备导入（已移除，只使用e2b沙箱）
+# from sandbox_center.sandboxes.cloud_phone_wy import (
+#     CloudPhone,
+# )
+# 云设备导入（已移除，只使用e2b沙箱）
+# from sandbox_center.sandboxes.cloud_computer_wy import (
+#     CloudComputer,
+# )
 from fastapi import HTTPException
 
 

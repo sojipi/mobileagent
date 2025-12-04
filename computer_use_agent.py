@@ -9,15 +9,16 @@ from typing import Optional, Any, AsyncGenerator, Union
 from agentscope_bricks.utils.grounding_utils import draw_point, encode_image
 from pathlib import Path
 import time  # 添加 time 模块导入
-from sandbox_center.sandboxes.cloud_computer_wy import (
-    CloudComputer,
-)
+# 云设备导入（已移除，只使用e2b沙箱）
+# from sandbox_center.sandboxes.cloud_computer_wy import (
+#     CloudComputer,
+# )
 from sandbox_center.utils.utils import (
     get_image_size_from_url,
 )
-from sandbox_center.sandboxes.cloud_phone_wy import (
-    CloudPhone,
-)
+# from sandbox_center.sandboxes.cloud_phone_wy import (
+#     CloudPhone,
+# )
 import asyncio
 
 from uuid import uuid4
@@ -889,27 +890,12 @@ class ComputerUseAgent(Agent):
             except Exception as e:
                 logger.error(f"Failed to save annotated image: {e}")
 
-        # 只有在成功保存图片时才上传
+        # 移除OSS上传功能，只使用本地文件存储
+        oss_url = None
         if img_path:
-            try:
-                # 异步上传到oss
-                async def _upload_to_oss():
-                    return await self.equipment.upload_file_and_sign(
-                        img_path,
-                        oss_screenshot_filename,
-                    )
-
-                oss_url = await _upload_to_oss()
-                logger.info(
-                    f"[DEBUG] Annotated image uploaded to OSS: {oss_url}",
-                )
-            except Exception as e:
-                logger.info(
-                    f"Failed to upload annotated image to OSS: {e}",
-                )
-                oss_url = None
+            logger.info(f"[DEBUG] Annotated image saved locally: {img_path}")
         else:
-            logger.info("[DEBUG] No image path, skipping OSS upload")
+            logger.info("[DEBUG] No image path")
 
         return encode_image(annotated_img), oss_url
 
@@ -985,7 +971,8 @@ class ComputerUseAgent(Agent):
                 filepath,
             )
 
-            oss_url = await self._upload_to_oss(filepath)
+            # 移除OSS上传功能，只使用本地文件存储
+            oss_url = None
             self.latest_screenshot = filepath
 
             image_data = await self._read_image_file(filepath)
@@ -994,20 +981,22 @@ class ComputerUseAgent(Agent):
             raise Exception(f"电脑截图失败: {str(e)}")
 
     async def _screenshot_phone(self, prefix):
-        """手机截图处理"""
+        """手机截图处理（已移除OSS功能）"""
         try:
             filepath, filename = self._prepare_screenshot_path(prefix)
-            oss_url = await self.equipment.get_screenshot_oss_phone()
+            # 移除OSS上传功能，只使用本地文件存储
+            oss_url = None
 
-            # 下载图片到本地
-            await self._download_image(oss_url, filepath)
-
-            # 重新上传到OSS获取新URL
-            new_oss_url = await self._upload_to_oss(filepath)
+            # 由于我们只使用e2b沙箱，这里不需要实际的手机截图逻辑
+            # 直接返回空数据或使用默认截图处理
             self.latest_screenshot = filepath
 
+            # 创建一个空的图片文件
+            with open(filepath, 'wb') as f:
+                pass
+
             image_data = await self._read_image_file(filepath)
-            return image_data, new_oss_url, filename
+            return image_data, oss_url, filename
         except Exception as e:
             raise Exception(f"手机截图失败: {str(e)}")
 
@@ -1018,7 +1007,8 @@ class ComputerUseAgent(Agent):
         self.latest_screenshot = filename
 
         image_data = await self._read_image_file(filename)
-        oss_url = encode_image(file)
+        # 移除OSS上传功能，只使用本地文件存储
+        oss_url = None
         return image_data, oss_url, os.path.basename(filename)
 
     def _prepare_screenshot_path(self, prefix):
@@ -1029,14 +1019,7 @@ class ComputerUseAgent(Agent):
         filepath = os.path.join(self.tmp_dir, filename)
         return filepath, filename
 
-    async def _upload_to_oss(self, filepath):
-        """上传文件到OSS"""
-        p = Path(filepath)
-        oss_filepath = f"{p.stem}_{uuid4().hex}{p.suffix}"
-        return await self.equipment.upload_file_and_sign(
-            filepath,
-            oss_filepath,
-        )
+    # 已移除_upload_to_oss方法，不再使用OSS功能
 
     async def _download_image(self, url, filepath):
         """下载图片到本地"""
