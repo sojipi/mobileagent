@@ -64,14 +64,14 @@ Computer Use Agent 是一个基于人工智能的桌面自动化系统，能够�
 需要提前安装好python ,推荐3.10
 ##### 1.1 环境变量配置
 
-##### 1.1.1 灵积百炼平台大模型API-KEY 开通
+##### 1.1.1 灵积百炼平台大模型 API-KEY 开通
+
     介绍文档：
     https://help.aliyun.com/zh/model-studio/get-api-key?scm=20140722.S_help%40%40%E6%96%87%E6%A1%A3%40%402712195._.ID_help%40%40%E6%96%87%E6%A1%A3%40%402712195-RL_api%7EDAS%7Ekey-LOC_doc%7EUND%7Eab-OR_ser-PAR1_2102029c17568993690712578dba5c-V_4-PAR3_o-RE_new5-P0_0-P1_0&spm=a2c4g.11186623.help-search.i20
 
-备注：qwen-max/qwen-vl-max模型在链路中调用，新用户都会有免费额度；
 开通完后需要找Mobile agent团队 对agent进行邀测加白；
 ##### 1.1.2 阿里云账号ak ,sk 获取
-    介绍文档：
+##### 1.1.2 E2B 开通
     https://help.aliyun.com/document_detail/53045.html?spm=5176.21213303.aillm.3.7df92f3d4XzQHZ&scm=20140722.S_%E9%98%BF%E9%87%8C%E4%BA%91sk._.RL_%E9%98%BF%E9%87%8C%E4%BA%91sk-LOC_aillm-OR_chat-V_3-RC_llm
 
 ##### 1.1.3 oss开通
@@ -98,8 +98,12 @@ Computer Use Agent 是一个基于人工智能的桌面自动化系统，能够�
       https://wya.wuying.aliyun.com/instanceLayouts
       帮助文档：
       https://help.aliyun.com/zh/ecp/?spm=a2c4g.11186623.0.0.62dfe33avAMTwU
-  购买完后将云电脑需要的信息配置到下面环境变量中，也就是EDS_ 的配置
-  ALIBABA_CLOUD_ACCESS_KEY相关的信息就是购买云手机的阿里云账号的ak,sk
+REDIS_USERNAME=your-redis-username
+REDIS_PORT=your-redis-port
+```
+
+购买完后将云电脑需要的信息配置到下面环境变量中，也就是 EDS\_ 的配置
+ALIBABA_CLOUD_ACCESS_KEY 相关的信息就是购买云手机的阿里云账号的 ak,sk
 
 环境变量配置示例
 
@@ -161,6 +165,7 @@ export ECD_DESKTOP_ID="your_desktop_id"
 # 保存后运行
 source ~/.zshrc
 ```
+
 #### 💻 1.2 云电脑环境准备
 
 如果云电脑已经装好环境，这步不需要配置，但是依赖需要看下是否安装。
@@ -246,14 +251,16 @@ python -m pip install aiohttp -i https://mirrors.aliyun.com/pypi/simple/
 python -m pip install asyncio -i https://mirrors.aliyun.com/pypi/simple/
 
 ```
+
 ##### 1.2.2 云电脑临时图片存放文件夹创建
 
-c盘下 创建一个file文件夹
+c 盘下 创建一个 file 文件夹
+
 #### 📱 1.3 云手机环境准备
 
-由于一些app对剪贴板有开启限制，导致文字输入指令无法生效（通过剪贴板实现），所以手机环境需要提前安装好 `ADBKeyboard.apk`。
+由于一些 app 对剪贴板有开启限制，导致文字输入指令无法生效（通过剪贴板实现），所以手机环境需要提前安装好 `ADBKeyboard.apk`。
 
-```
+````
 #### 1.4 本地 Demo 启动
 
 ##### 1.4.1 在根目录下
@@ -262,11 +269,11 @@ c盘下 创建一个file文件夹
 ```bash
 # 在根目录下执行
 pip install -r requirements.txt
-```
+````
 
 ##### 1.4.3 启动脚本授权和启动
 
-**注意：云电脑、云手机要保证启动运行中，可以在无影控制台，或者客户端设置。
+\*\*注意：云电脑、云手机要保证启动运行中，可以在无影控制台，或者客户端设置。
 
 ```bash
 # 赋予执行权限
@@ -283,6 +290,7 @@ streamlit run frontend.py
 ```
 
 启动后控制台会提示输入邮箱，直接回车即可。后续就可以直接执行启动脚本。
+
 #### 🎉 1.4.4 启动成功输出
 
 启动成功后，终端输出如下：
@@ -311,9 +319,8 @@ INFO:     Started reloader process [71212] using StatReload
 ```
 
 **访问地址：**
+
 - 浏览器访问前端页面：[http://localhost:8501](http://localhost:8501)
-
-
 
 #### 1.4.5 使用备注
 

@@ -18,17 +18,10 @@ from redis_resource_allocator import (
 )
 from cua_utils import init_sandbox
 import os
-from sandbox_center.sandboxes.cloud_phone_wy import (
-    CloudPhone,
-)
-from sandbox_center.sandboxes.cloud_computer_wy import (
-    CloudComputer,
-)
+
 from fastapi import HTTPException
 from agentscope_bricks.utils.logger_util import logger
-from sandbox_center.sandboxes.cloud_computer_wy import (
-    AppStreamClient,
-)
+
 
 # 心跳超时时间（秒）
 heartbeat_timeout = int(os.getenv("HEARTBEAT_TIMEOUT", 120))
