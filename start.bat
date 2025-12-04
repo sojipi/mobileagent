@@ -1,80 +1,59 @@
 @echo off
+setlocal enabledelayedexpansion
 
-title Travel Assistant
-
-echo.
-echo ==============================================
-echo Travel Assistant Startup Script
-echo ==============================================
-echo.
-
-REM Check Python installation
+:: 检查Python是否安装
 py --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python not found. Please install Python 3.8+
-    echo Visit: https://www.python.org/downloads/
+    echo Python not found. Please install Python 3.8+ and add it to PATH.
     pause
     exit /b 1
 )
 
-echo [OK] Python installed
-
-REM Check pip
-pip --version >nul 2>&1
+:: 检查pip是否安装
+py -m pip --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] pip not found. Check Python installation
+    echo pip not found. Please install Python 3.8+ with pip and add it to PATH.
     pause
     exit /b 1
 )
 
-echo [OK] pip installed
-
-REM Check .env file
-
-echo.
-
-REM Check virtual environment
+:: 创建虚拟环境
 if not exist "venv" (
-    echo [INFO] Creating virtual environment...
+    echo Creating virtual environment...
     py -m venv venv
-    if errorlevel 1 (
-        echo [ERROR] Failed to create virtual environment
-        pause
-        exit /b 1
-    )
-    echo [OK] Virtual environment created
-    echo.
-) else (
-    echo [OK] Virtual environment exists
 )
 
-echo [INFO] Installing dependencies...
+:: 激活虚拟环境
 call venv\Scripts\activate.bat
+
+:: 安装依赖
+echo Installing dependencies...
 pip install -r requirements.txt
 
-if errorlevel 1 (
-    echo [ERROR] Failed to install dependencies
-    pause
-    exit /b 1
+:: 加载环境变量
+if exist ".env" (
+    echo Loading environment variables from .env...
+    for /f "usebackq tokens=*" %%a in (".env") do (
+        set "%%a"
+    )
 )
 
-echo [OK] Dependencies installed
-echo.
+:: 启动后端服务
+echo Starting backend service on port 8002...
+start /B py backend.py
 
+:: 等待后端启动
+timeout /t 3 /nobreak >nul
 
+:: 启动前端静态资源服务
+echo Starting frontend static server on port 8001...
+cd static
+start /B py -m http.server 8001 --bind 127.0.0.1
+cd ..
 
-echo [INFO] Starting application...
-echo ==============================================
-echo URL: http://localhost:7860
-echo ==============================================
-echo.
-echo Press Ctrl+C to stop
-echo.
+echo All services started!
+echo Backend service: http://localhost:8002
+echo Frontend static server: http://localhost:8001
+echo Access the application at: http://localhost:8001
 
-py vibe_eval.py
-
-if errorlevel 1 (
-    echo.
-    echo [ERROR] Application exited with error
-    pause >nul
-)
+pause
