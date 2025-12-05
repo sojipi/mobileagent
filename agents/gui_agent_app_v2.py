@@ -18,10 +18,7 @@ from agents.agent import (
 )
 from agentscope_bricks.utils.logger_util import logger
 
-AGENT_URL = os.getenv(
-    "AGENT_API_URL",
-    "https://dashscope.aliyuncs.com/api/v2/apps/gui-owl/gui_agent_server",
-)
+AGENT_URL = os.getenv("MODEL_BASE_URL")
 
 
 class GuiAgentResponse(BaseModel):
@@ -67,8 +64,7 @@ class GuiAgent(Generic[GuiAgentMessageT, GuiAgentReturnT]):
         try:
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": "Bearer "
-                + f'{os.getenv("DASHSCOPE_API_KEY", None)}',
+                "Authorization": "Bearer " + f'{os.getenv("MODEL_API_KEY", None)}',
             }
 
             data = {

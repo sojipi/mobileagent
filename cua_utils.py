@@ -401,5 +401,5 @@ class OpenAIBaseProvider(LLMProvider):
 
 
 class QwenProvider(OpenAIBaseProvider):
-    base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    api_key = os.getenv("DASHSCOPE_API_KEY")
+    base_url = os.getenv("MODEL_BASE_URL")
+    api_key = os.getenv("MODEL_API_KEY")

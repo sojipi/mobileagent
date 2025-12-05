@@ -1,10 +1,10 @@
 @echo off
 
-title Travel Assistant
+title Computer Use Agent
 
 echo.
 echo ==============================================
-echo Travel Assistant Startup Script
+echo Computer Use Agent Startup Script
 echo ==============================================
 echo.
 
@@ -29,24 +29,44 @@ if errorlevel 1 (
 
 echo [OK] pip installed
 
-REM Check .env file
+REM Load environment variables
+if exist ".env" (
+    echo [INFO] Loading environment variables...
+    for /f "tokens=*" %%i in (.env) do set %%i
+    echo [OK] Environment variables loaded
+) else (
+    echo [WARNING] .env file not found
+)
 
 echo.
 
-REM Check virtual environment
-if not exist "venv" (
-    echo [INFO] Creating virtual environment...
-    py -m venv venv
-    if errorlevel 1 (
-        echo [ERROR] Failed to create virtual environment
-        pause
-        exit /b 1
-    )
-    echo [OK] Virtual environment created
-    echo.
-) else (
-    echo [OK] Virtual environment exists
-)
+REM Start backend service
+echo [INFO] Starting backend service...
+start /B py backend.py
+
+REM Wait for backend to start
+timeout /t 3 /nobreak >nul
+
+REM Start frontend static file server
+echo [INFO] Starting frontend static file server...
+cd static
+start /B py -m http.server 8001 --bind 127.0.0.1
+cd ..
+
+
+echo [OK] Services started!
+echo [INFO] Access address: http://localhost:7860
+echo.
+echo [INFO] Press Ctrl+C to stop all services...
+
+REM Wait for user input
+pause
+
+REM Stop all services
+echo [INFO] Stopping services...
+taskkill /IM python.exe /F 2>nul
+
+echo [OK] All services stopped
 
 echo [INFO] Installing dependencies...
 call venv\Scripts\activate.bat

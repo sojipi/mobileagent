@@ -22,13 +22,7 @@ from enum import Enum
 # 导入Redis状态管理器
 from redis_state_manager import RedisStateManager
 
-# 云设备导入
-from sandbox_center.sandboxes.cloud_phone_wy import (
-    CloudPhone,
-)
-from sandbox_center.sandboxes.cloud_computer_wy import (
-    CloudComputer,
-)
+
 
 from agentscope_bricks.utils.logger_util import logger
 from pydantic import BaseModel, field_validator, model_validator
@@ -37,6 +31,11 @@ from pydantic import ConfigDict
 
 
 load_dotenv()
+
+# 从环境变量获取配置
+SANDBOX_TYPE = os.getenv("SANDBOX_TYPE", "e2b-desktop")
+EQUIPMENT_TYPE = os.getenv("EQUIPMENT_TYPE", "e2b_desktop")
+OSS_ENABLED = os.getenv("OSS_ENABLED", "false").lower() == "true"
 
 app = FastAPI(title="Computer Use Agent Backend", version="1.0.0")
 
@@ -518,12 +517,8 @@ class AgentConfig(BaseModel):
 
     @model_validator(mode="after")
     def set_defaults_based_on_mode(self):
-        # 只有当 sandbox_type 是默认值时才根据 mode 设置新值
-        if self.sandbox_type == "e2b-desktop":  # 默认值
-            if self.mode == "pc_use":
-                self.sandbox_type = "pc_wuyin"
-            elif self.mode == "phone_use":
-                self.sandbox_type = "phone_wuyin"
+        # 使用从环境变量中获取的SANDBOX_TYPE配置
+        self.sandbox_type = SANDBOX_TYPE
         return self
 
     @field_validator("e2e_info", mode="before")

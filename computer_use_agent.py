@@ -9,14 +9,8 @@ from typing import Optional, Any, AsyncGenerator, Union
 from agentscope_bricks.utils.grounding_utils import draw_point, encode_image
 from pathlib import Path
 import time  # 添加 time 模块导入
-from sandbox_center.sandboxes.cloud_computer_wy import (
-    CloudComputer,
-)
 from sandbox_center.utils.utils import (
     get_image_size_from_url,
-)
-from sandbox_center.sandboxes.cloud_phone_wy import (
-    CloudPhone,
 )
 import asyncio
 

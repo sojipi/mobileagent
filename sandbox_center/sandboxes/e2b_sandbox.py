@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 from e2b_desktop import Sandbox
 from agentscope_bricks.utils.grounding_utils import (
     perform_gui_grounding_with_api,
@@ -8,6 +9,9 @@ from .sandbox_base import (
     SandboxBase,
     OperationStatus,
 )
+
+# 从环境变量获取E2B API密钥
+E2B_API_KEY = os.getenv("E2B_API_KEY")
 
 execute_wait_time_: int = 5
 
@@ -22,7 +26,8 @@ class E2bSandBox(SandboxBase):
         if sandbox:
             self.device = sandbox
         else:
-            self.device = Sandbox.create(timeout=timeout)
+            # 使用从环境变量中获取的E2B API密钥创建Sandbox实例
+            self.device = Sandbox.create(api_key=E2B_API_KEY, timeout=timeout)
 
     def run_command(
         self,
